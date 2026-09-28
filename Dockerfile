@@ -1,3 +1,22 @@
+FROM golang:alpine AS owncast-builder
+
+RUN apk add --no-cache git patch gcc musl-dev linux-headers
+
+WORKDIR /src
+
+RUN git clone --depth=1 https://github.com/owncast/owncast.git .
+
+COPY filter-order.patch /tmp/filter-order.patch
+
+RUN patch -p1 < /tmp/filter-order.patch
+
+RUN mkdir -p /out && \
+    CGO_ENABLED=1 go build \
+        -a \
+        -installsuffix cgo \
+        -ldflags '-extldflags "-static" -s -w' \
+        -o /out/owncast .
+
 FROM debian:trixie-slim
 
 LABEL org.opencontainers.image.authors="admin@minenet.at"
@@ -81,6 +100,7 @@ RUN mkdir -p "${DATA_DIR}" && \
     chown -R owncast:owncast "${DATA_DIR}"
 
 ADD /scripts/ /opt/scripts/
+COPY --from=owncast-builder /out/owncast /usr/local/bin/owncast-patched
 
 RUN chmod -R 770 /opt/scripts/
 

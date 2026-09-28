@@ -72,6 +72,10 @@ if [ ! -d ${DATA_DIR}/data ]; then
 fi
 chmod -R ${DATA_PERM} ${DATA_DIR}
 
+echo "---Installing patched Owncast binary---"
+cp -f /usr/local/bin/owncast-patched "${DATA_DIR}/Owncast/owncast"
+chmod +x "${DATA_DIR}/Owncast/owncast"
+
 echo "---Starting Server---"
 cd ${DATA_DIR}/Owncast
 ${DATA_DIR}/Owncast/owncast -database ${DATA_DIR}/data/owncast.db ${START_PARAMS}

@@ -1,0 +1,21 @@
+--- a/services/transcoder/transcoder.go
++++ b/services/transcoder/transcoder.go
+@@ -363,12 +363,14 @@ func (v *HLSVariant) getVariantString(t *Transcoder) []string {
+ 
+ 	if (v.videoSize.Width != 0 || v.videoSize.Height != 0) && !v.isVideoPassthrough {
+-		// Order here matters, you must scale before changing hardware formats
+-		filters := []string{
+-			v.getScalingString(t.codec.Scaler()),
+-		}
++		// Hardware filters such as scale_qsv/scale_vaapi require frames
++		// to be uploaded to the hardware device first.
++		filters := []string{}
++
+ 		if t.codec.ExtraFilters() != "" {
+ 			filters = append(filters, t.codec.ExtraFilters())
+ 		}
++
++		filters = append(filters, v.getScalingString(t.codec.Scaler()))
+ 		scalingAlgorithm := "bilinear"
+ 		variantEncoderCommands = append(variantEncoderCommands, []string{
+			"-sws_flags", scalingAlgorithm,
