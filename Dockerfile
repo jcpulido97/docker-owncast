@@ -1,25 +1,66 @@
-FROM ich777/debian-baseimage:bullseye_amd64
+FROM debian:trixie-slim
 
 LABEL org.opencontainers.image.authors="admin@minenet.at"
 LABEL org.opencontainers.image.source="https://github.com/ich777/docker-owncast"
 
-ARG MEDIA_DRV_VERSION=21.2.3
-ARG FFMPEG_V=n4.4
+ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && \
-	apt-get -y install --no-install-recommends jq unzip mesa-va-drivers libigdgmm11 && \
-	wget -O /tmp/intel-media.tar.gz https://github.com/ich777/media-driver/releases/download/intel-media-${MEDIA_DRV_VERSION}/intel-media-${MEDIA_DRV_VERSION}.tar.gz && \
-	cd /tmp && \
-	tar -C / -xvf /tmp/intel-media.tar.gz && \
-	rm -rf /tmp/intel-media.tar.gz && \
-	rm -rf /var/lib/apt/lists/*
+# BtbN floating latest build.
+# This URL always points at the latest successful master build.
+ARG FFMPEG_ARCHIVE="ffmpeg-master-latest-linux64-gpl.tar.xz"
+ARG FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_ARCHIVE}"
 
+#
+# Base utilities + modern Intel VAAPI/QSV stack.
+#
 RUN apt-get update && \
-	apt-get -y install libxcb-shm0 libasound2 libxv1 libva2 libx264-160 libx265-192 libva-drm2 libva-x11-2 && \
-	rm -rf /var/lib/apt/lists/* && \
-	wget -O /tmp/FFmpeg.tar.gz https://github.com/ich777/FFmpeg/releases/download/${FFMPEG_V}/FFmpeg-${FFMPEG_V}.tar.gz && \
-	tar -C / -xvf /tmp/FFmpeg.tar.gz && \
-	rm -rf /tmp/FFmpeg.tar.gz
+    apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        wget \
+        jq \
+        unzip \
+        xz-utils \
+        passwd \
+        util-linux \
+        libdrm2 \
+        libva2 \
+        libva-drm2 \
+        libva-x11-2 \
+        intel-media-va-driver \
+        libigdgmm12 \
+        libvpl2 \
+        libmfx-gen1.2 \
+        vainfo && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+#
+# Download the newest BtbN FFmpeg GPL static build.
+#
+# The find commands make this independent of the top-level
+# directory name used inside the BtbN archive.
+#
+RUN mkdir -p /tmp/ffmpeg-extract && \
+    wget \
+        --progress=dot:giga \
+        -O /tmp/ffmpeg.tar.xz \
+        "${FFMPEG_URL}" && \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg-extract && \
+    FFMPEG_BIN="$(find /tmp/ffmpeg-extract -type f -path '*/bin/ffmpeg' -print -quit)" && \
+    FFPROBE_BIN="$(find /tmp/ffmpeg-extract -type f -path '*/bin/ffprobe' -print -quit)" && \
+    test -n "${FFMPEG_BIN}" && \
+    test -n "${FFPROBE_BIN}" && \
+    install -m 0755 "${FFMPEG_BIN}" /usr/local/bin/ffmpeg && \
+    install -m 0755 "${FFPROBE_BIN}" /usr/local/bin/ffprobe && \
+    rm -rf /tmp/ffmpeg.tar.xz /tmp/ffmpeg-extract && \
+    ffmpeg -version && \
+    ffmpeg -hide_banner -encoders | grep -E 'h264_(vaapi|qsv)' || true
+
+#
+# Intel VAAPI driver.
+#
+ENV LIBVA_DRIVER_NAME=iHD
 
 ENV DATA_DIR=/owncast
 ENV START_PARAMS=""
@@ -30,13 +71,17 @@ ENV GID=100
 ENV DATA_PERM=770
 ENV USER="owncast"
 
-RUN mkdir $DATA_DIR && \
-	useradd -d $DATA_DIR -s /bin/bash $USER && \
-	chown -R $USER $DATA_DIR && \
-	ulimit -n 2048
+RUN mkdir -p "${DATA_DIR}" && \
+    groupadd -r owncast && \
+    useradd \
+        -d "${DATA_DIR}" \
+        -s /bin/bash \
+        -g owncast \
+        owncast && \
+    chown -R owncast:owncast "${DATA_DIR}"
 
 ADD /scripts/ /opt/scripts/
+
 RUN chmod -R 770 /opt/scripts/
 
-#Server Start
 ENTRYPOINT ["/opt/scripts/start.sh"]
