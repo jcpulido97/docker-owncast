@@ -1,14 +1,18 @@
-FROM golang:alpine AS owncast-builder
+FROM golang:1.26.2-alpine AS owncast-builder
 
 RUN apk add --no-cache git patch gcc musl-dev linux-headers
 
 WORKDIR /src
 
-RUN git clone --depth=1 https://github.com/owncast/owncast.git .
+# Pin the source revision so the transcoder patch applies to a known version.
+ARG OWNCAST_SOURCE_REV=21a6f5670ef4c0e13750e2987729ae57de7f7f8c
+RUN wget -q -O /tmp/owncast-source.tar.gz \
+        "https://codeload.github.com/owncast/owncast/tar.gz/${OWNCAST_SOURCE_REV}" && \
+    tar -xzf /tmp/owncast-source.tar.gz --strip-components=1 && \
+    rm /tmp/owncast-source.tar.gz
 
 COPY filter-order.patch /tmp/filter-order.patch
-
-RUN patch -p1 < /tmp/filter-order.patch
+RUN git apply --check /tmp/filter-order.patch && git apply /tmp/filter-order.patch
 
 RUN mkdir -p /out && \
     CGO_ENABLED=1 go build \
